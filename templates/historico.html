@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico de Consumo</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .periodo-card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+        
+        .periodo-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        
+        .periodo-info {
+            flex: 1;
+        }
+        
+        .periodo-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-details {
+            background-color: #3498db;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-details:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-export {
+            background-color: #2ecc71;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 5px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .btn-export:hover {
+            background-color: #27ae60;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 2rem;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            color: #7f8c8d;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-history"></i> Histórico de Consumo</h1>
+            <nav>
+                <a href="{{ url_for('index') }}" class="btn-back">
+                    <i class="fas fa-arrow-left"></i> Voltar
+                </a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="historico-section">
+                <h2><i class="fas fa-calendar-alt"></i> Períodos Registrados</h2>
+                
+                {% if periodos %}
+                    {% for periodo in periodos %}
+                    <div class="periodo-card">
+                        <div class="periodo-info">
+                            <h3>{{ periodo.descricao }}</h3>
+                        </div>
+                        <div class="periodo-actions">
+                            <a href="{{ url_for('detalhes_historico', ano=periodo.ano, mes=periodo.mes) }}" class="btn-details">
+                                <i class="fas fa-eye"></i> Detalhes
+                            </a>
+                            <a href="{{ url_for('exportar_medicao', medicao_id=periodo.valor) }}" class="btn-export">
+                                <i class="fas fa-file-excel"></i> Exportar
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state">
+                        <i class="fas fa-calendar-times fa-3x"></i>
+                        <h3>Nenhum período registrado</h3>
+                        <p>Não há registros de consumo no sistema ainda.</p>
+                    </div>
+                {% endif %}
+            </section>
+        </main>
+
+        <footer class="footer">
+            <div class="container">
+                <p>Sistema de Gestão Energética &copy; {{ now.year }}</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        // Adicione no início do script do histórico
+        console.log("Iniciando carregamento do histórico");
+
+        fetch('/api/historico')
+        .then(response => {
+            console.log("Resposta recebida", response);
+            return response.json();
+        })
+        .then(data => {
+            console.log("Dados do histórico:", data);
+            // Seu código de renderização aqui
+        })
+        .catch(error => {
+            console.error("Erro ao carregar histórico:", error);
+        });
+    </script>
+</body>
+
+</html>

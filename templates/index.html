@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestão Energética</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        /* [Manter todos os estilos CSS anteriores] */
+        /* ... (todo o CSS anterior permanece igual) ... */
+
+        .leitura-info {
+            background-color: #f0f8ff;
+            padding: 10px;
+            border-radius: var(--border-radius);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .leitura-info span {
+            font-weight: bold;
+            color: var(--secondary-color);
+        }
+
+        .salao-container {
+            background-color: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .salao-container h4 {
+            color: var(--secondary-color);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #eee;
+        }
+
+        .resultado-container {
+            background-color: #e9ecef;
+            padding: 1.5rem;
+            border-radius: var(--border-radius);
+            margin-top: 1.5rem;
+        }
+
+        .resultado-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        .resultado-table th,
+        .resultado-table td {
+            padding: 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .resultado-table th {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .resultado-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+
+        .total-row {
+            font-weight: bold;
+            background-color: #d4edda !important;
+        }
+
+        .salao-row {
+            background-color: #fff3cd;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-bolt"></i> Gestão de Consumo Energético</h1>
+            <nav>
+                <a href="{{ url_for('index') }}" class="active">
+                    <i class="fas fa-home"></i> Início
+                </a>
+                <a href="{{ url_for('historico') }}">
+                    <i class="fas fa-history"></i> Histórico
+                </a>
+            </nav>
+        </header>
+
+        <main>
+            <section class="form-section">
+                <h2><i class="fas fa-calculator"></i> Registro de Consumo Mensal</h2>
+
+                <!-- Seletor de Mês/Ano -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="mes_referencia">
+                            <i class="far fa-calendar-alt"></i> Mês/Ano de Referência:
+                        </label>
+                        <input type="month" name="mes_referencia" id="mes_referencia" required>
+                    </div>
+                </div>
+
+                <!-- Adicione isso após o seletor de mês/ano -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="valor_total">
+                            <i class="fas fa-money-bill-wave"></i> Valor Total da Conta (R$):
+                        </label>
+                        <input type="number" step="0.01" name="valor_total" id="valor_total" required>
+                    </div>
+                </div>
+
+                <!-- Seção do Salão de Festas -->
+                <div class="salao-container">
+                    <h4><i class="fas fa-glass-cheers"></i> Salão de Festas</h4>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="anterior_salao">
+                                <i class="fas fa-backward"></i> Leitura Anterior:
+                            </label>
+                            <input type="number" name="anterior_salao" id="anterior_salao" readonly>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="atual_salao">
+                                <i class="fas fa-forward"></i> Leitura Atual:
+                            </label>
+                            <input type="number" name="atual_salao" id="atual_salao" min="0" required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lista de Apartamentos -->
+                <div class="form-group">
+                    <h3><i class="fas fa-home"></i> Casas</h3>
+                    <div id="apartamentos-container">
+                        <!-- Apartamentos serão gerados dinamicamente aqui -->
+                    </div>
+                    <button type="button" id="btn-adicionar-apto" class="btn-add">
+                        <i class="fas fa-plus"></i> Adicionar Apartamento
+                    </button>
+                </div>
+
+                <div class="form-actions">
+                    <button type="button" id="btn-calcular" class="btn-submit">
+                        <i class="fas fa-calculator"></i> Calcular Consumo
+                    </button>
+                    <button type="reset" class="btn-reset">
+                        <i class="fas fa-undo"></i> Limpar Formulário
+                    </button>
+                </div>
+            </section>
+
+            <!-- Seção de Resultados (será preenchida após cálculo) -->
+            <div id="resultado-container" class="resultado-container" style="display: none;">
+                <h3><i class="fas fa-chart-bar"></i> Resultado do Cálculo</h3>
+                <div id="tabela-resultados"></div>
+
+                <div class="total-box">
+                    <h4>Total Geral do Condomínio: R$ <span id="total-condominio">0.00</span></h4>
+                </div>
+
+                <button type="button" id="btn-salvar" class="btn-submit">
+                    <i class="fas fa-save"></i> Salvar Registros
+                </button>
+            </div>
+
+            {% if error_message %}
+            <div class="alert alert-error">
+                {{ error_message }}
+            </div>
+            {% endif %}
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // Configuração inicial
+            const hoje = new Date();
+            document.getElementById('mes_referencia').value = hoje.toISOString().substring(0, 7);
+
+            // Variáveis globais
+            let casas = [];
+            let ultimoIdCasa = 0;
+
+            // Objeto para armazenar as últimas leituras
+            let ultimasLeituras = {
+                salao: 0,
+                casas: {}
+            };
+
+            // Carregar últimas leituras ao iniciar
+            carregarUltimasLeituras().then(() => {
+                // Preencher leitura do salão
+                document.getElementById('anterior_salao').value = ultimasLeituras.salao;
+
+                // Adicionar primeira casa
+                adicionarCasa();
+            });
+
+            // Event Listeners
+            document.getElementById('btn-adicionar-apto').addEventListener('click', adicionarCasa);
+            document.getElementById('btn-calcular').addEventListener('click', calcularConsumos);
+            document.getElementById('btn-salvar').addEventListener('click', salvarRegistros);
+
+            // Função para carregar todas as últimas leituras
+            async function carregarUltimasLeituras() {
+                try {
+                    const response = await fetch('/api/ultimas-leituras');
+                    if (!response.ok) throw new Error('Erro ao carregar leituras');
+
+                    const data = await response.json();
+
+                    // Atualiza o objeto de últimas leituras
+                    ultimasLeituras.salao = data['Salão de festas'] || 0;
+
+                    // Organiza as leituras das casas
+                    for (let i = 1; i <= 10; i++) {
+                        const nomeCasa = `Casa ${i < 10 ? '0' + i : i}`;
+                        ultimasLeituras.casas[i] = data[nomeCasa] || 0;
+                    }
+
+                    console.log('Últimas leituras carregadas:', ultimasLeituras);
+                } catch (error) {
+                    console.error("Erro ao carregar últimas leituras:", error);
+                }
+            }
+
+            // Função para adicionar uma casa
+            function adicionarCasa() {
+                ultimoIdCasa++;
+                const casaId = ultimoIdCasa;
+                const container = document.getElementById('apartamentos-container');
+
+                // Formata o número com zero à esquerda para números < 10
+                const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
+
+                const casaDiv = document.createElement('div');
+                casaDiv.className = 'apto-container';
+                casaDiv.dataset.id = casaId;
+
+                casaDiv.innerHTML = `
+                <h4><i class="fas fa-home"></i> Casa ${numeroFormatado}</h4>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="anterior_casa_${casaId}">
+                            <i class="fas fa-backward"></i> Leitura Anterior:
+                        </label>
+                        <input type="number" name="anterior_casa[]" id="anterior_casa_${casaId}" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="atual_casa_${casaId}">
+                            <i class="fas fa-forward"></i> Leitura Atual:
+                        </label>
+                        <input type="number" name="atual_casa[]" id="atual_casa_${casaId}" min="0" required>
+                    </div>
+                    <button type="button" class="btn-remove" onclick="removerCasa(${casaId})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `;
+
+                container.appendChild(casaDiv);
+                casas.push(casaId);
+
+                // Preencher leitura anterior se existir
+                const leituraAnterior = ultimasLeituras.casas[casaId] || 0;
+                document.getElementById(`anterior_casa_${casaId}`).value = leituraAnterior;
+            }
+
+            // Função para remover uma casa
+            window.removerCasa = function (id) {
+                const casaDiv = document.querySelector(`.apto-container[data-id="${id}"]`);
+                if (casaDiv) {
+                    casaDiv.remove();
+                    casas = casas.filter(casaId => casaId !== id);
+                }
+            };
+
+            // Função principal de cálculo
+            function calcularConsumos() {
+                // Validar valor total
+                const valorTotal = parseFloat(document.getElementById('valor_total').value);
+                if (isNaN(valorTotal) || valorTotal <= 0) {
+                    alert('Informe um valor total válido para a conta de luz!');
+                    return;
+                }
+
+                // Validar leitura do salão
+                const anteriorSalao = parseFloat(document.getElementById('anterior_salao').value) || 0;
+                const atualSalao = parseFloat(document.getElementById('atual_salao').value) || 0;
+
+                if (atualSalao < anteriorSalao) {
+                    alert('A leitura atual do salão não pode ser menor que a anterior!');
+                    return;
+                }
+
+                // Validar leituras das casas
+                let todasValidas = true;
+                casas.forEach(casaId => {
+                    const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
+                    const atualCasa = parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0;
+
+                    if (atualCasa < anteriorCasa) {
+                        const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
+                        alert(`A leitura atual da Casa ${numeroFormatado} não pode ser menor que a anterior!`);
+                        todasValidas = false;
+                    }
+                });
+
+                if (!todasValidas) return;
+
+                // Processar cálculo
+                const mesReferencia = document.getElementById('mes_referencia').value;
+                const [ano, mes] = mesReferencia.split('-');
+
+                // Verificar se já existe registro para este mês
+                fetch(`/api/verificar-mes/${ano}/${mes}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.existe) {
+                            if (!confirm('Já existem registros para este mês. Deseja continuar?')) {
+                                return;
+                            }
+                        }
+
+                        // Calcular totais de consumo
+                        let totalConsumoSalao = atualSalao - anteriorSalao;
+                        let totalConsumoCasas = 0;
+
+                        casas.forEach(casaId => {
+                            const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
+                            const atualCasa = parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0;
+                            totalConsumoCasas += (atualCasa - anteriorCasa);
+                        });
+
+                        const totalConsumoGeral = totalConsumoSalao + totalConsumoCasas;
+
+                        // Calcular percentuais
+                        const percentualSalao = totalConsumoGeral > 0 ? (totalConsumoSalao / totalConsumoGeral) * 100 : 0;
+                        const percentualCasas = 100 - percentualSalao;
+
+                        // Calcular valores
+                        const valorSalao = (valorTotal * percentualSalao / 100);
+                        const valorPorCasa = (valorTotal * percentualCasas / 100) / casas.length;
+                        const valorRateioSalaoPorCasa = valorSalao / casas.length;
+
+                        // Preparar resultados
+                        const resultados = [];
+                        let totalGeral = 0;
+
+                        // Adicionar casas aos resultados
+                        casas.forEach(casaId => {
+                            const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
+                            const atualCasa = parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0;
+                            const diferencaCasa = atualCasa - anteriorCasa;
+                            const porcentagemCasa = anteriorCasa > 0 ?
+                                ((diferencaCasa / anteriorCasa) * 100).toFixed(2).replace('.', ',') + '%' : '0,00%';
+
+                            const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
+                            const totalPagar = valorPorCasa + valorRateioSalaoPorCasa;
+
+                            resultados.push({
+                                unidade: `Casa ${numeroFormatado}`,
+                                anterior: anteriorCasa,
+                                atual: atualCasa,
+                                diferenca: diferencaCasa,
+                                porcentagem: porcentagemCasa,
+                                valor_unitario: valorPorCasa.toFixed(2),
+                                rateio_salao: valorRateioSalaoPorCasa.toFixed(2),
+                                total_pagar: totalPagar.toFixed(2)
+                            });
+
+                            totalGeral += totalPagar;
+                        });
+
+                        // Adicionar salão aos resultados
+                        const porcentagemSalao = anteriorSalao > 0 ?
+                            ((totalConsumoSalao / anteriorSalao) * 100).toFixed(2).replace('.', ',') + '%' : '0,00%';
+
+                        resultados.push({
+                            unidade: 'Salão de festas',
+                            anterior: anteriorSalao,
+                            atual: atualSalao,
+                            diferenca: totalConsumoSalao,
+                            porcentagem: porcentagemSalao,
+                            valor_unitario: valorSalao.toFixed(2),
+                            rateio_salao: '0.00',
+                            total_pagar: valorSalao.toFixed(2)
+                        });
+
+                        totalGeral += valorSalao;
+
+                        // Exibir resultados
+                        exibirResultados(resultados, totalGeral.toFixed(2));
+                    })
+                    .catch(error => {
+                        console.error("Erro ao verificar mês:", error);
+                    });
+            }
+
+            // Função para exibir os resultados em uma tabela
+            function exibirResultados(resultados, totalGeral) {
+                const tabelaHTML = `
+                <table class="resultado-table">
+                    <thead>
+                        <tr>
+                            <th>Unidade</th>
+                            <th>Mês Anterior</th>
+                            <th>Mês Atual</th>
+                            <th>Diferença (kWh)</th>
+                            <th>Variação</th>
+                            <th>Valor Unitário (R$)</th>
+                            <th>Rateio Salão (R$)</th>
+                            <th>Total a Pagar (R$)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${resultados.map(item => `
+                            <tr class="${item.unidade.includes('Salão') ? 'salao-row' : ''}">
+                                <td>${item.unidade}</td>
+                                <td>${item.anterior}</td>
+                                <td>${item.atual}</td>
+                                <td>${item.diferenca}</td>
+                                <td>${item.porcentagem}</td>
+                                <td>${item.unidade.includes('Salão') ? '-' : parseFloat(item.valor_unitario).toFixed(2).replace('.', ',')}</td>
+                                <td>${item.unidade.includes('Salão') ? '-' : parseFloat(item.rateio_salao).toFixed(2).replace('.', ',')}</td>
+                                <td>${parseFloat(item.total_pagar).toFixed(2).replace('.', ',')}</td>
+                            </tr>
+                        `).join('')}
+                        <tr class="total-row">
+                            <td colspan="7"><strong>Total Geral</strong></td>
+                            <td><strong>R$ ${parseFloat(totalGeral).toFixed(2).replace('.', ',')}</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            `;
+
+                document.getElementById('tabela-resultados').innerHTML = tabelaHTML;
+                document.getElementById('total-condominio').textContent = parseFloat(totalGeral).toFixed(2).replace('.', ',');
+                document.getElementById('resultado-container').style.display = 'block';
+            }
+
+            // Função para salvar os registros no banco de dados
+            function salvarRegistros() {
+                const mesReferencia = document.getElementById('mes_referencia').value;
+                const [ano, mes] = mesReferencia.split('-');
+                const valorTotal = parseFloat(document.getElementById('valor_total').value);
+
+                const dados = {
+                    mes: parseInt(mes),
+                    ano: parseInt(ano),
+                    valor_total: valorTotal,
+                    unidades: []
+                };
+
+                // Adicionar salão (nome exato como no banco)
+                dados.unidades.push({
+                    nome: 'Salão de festas',
+                    anterior: parseFloat(document.getElementById('anterior_salao').value) || 0,
+                    atual: parseFloat(document.getElementById('atual_salao').value) || 0
+                });
+
+                // Adicionar casas (usando o padrão "Casa XX")
+                casas.forEach(casaId => {
+                    const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
+                    dados.unidades.push({
+                        nome: `Casa ${numeroFormatado}`,
+                        anterior: parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0,
+                        atual: parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0
+                    });
+                });
+
+                // Enviar para o backend
+                fetch('/api/salvar-registros', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dados)
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'sucesso') {
+                            alert('Registros salvos com sucesso!');
+                            // Atualiza as últimas leituras e recarrega
+                            carregarUltimasLeituras().then(() => {
+                                location.reload();
+                            });
+                        } else {
+                            alert('Erro ao salvar registros: ' + data.mensagem);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Erro:', error);
+                        alert('Erro ao salvar registros');
+                    });
+            }
+        });
+    </script>
+</body>
+
+</html>
