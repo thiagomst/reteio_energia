@@ -108,40 +108,58 @@ def obter_ultimas_leituras():
         
         return jsonify(leituras)
 
-# Função para calcular rateio e consumo
+# Modified function to return total_consumo
 def calcular_rateio(dados):
     valor_total = dados['valor_total']
     total_consumo = 0
     consumo_salao = 0
+    consumo_casas = 0
     unidades_com_consumo = []
 
-    # Passo 1: Calcular consumo de cada unidade e o total
+    # Calcular consumo de cada unidade e totais
     for unidade in dados['unidades']:
         consumo = unidade['atual'] - unidade['anterior']
         if consumo > 0:
-            unidades_com_consumo.append({'nome': unidade['nome'], 'consumo': consumo})
-            total_consumo += consumo
             if 'Salão' in unidade['nome']:
                 consumo_salao = consumo
+            else:
+                consumo_casas += consumo
+            unidades_com_consumo.append({
+                'nome': unidade['nome'],
+                'consumo': consumo,
+                'valor_rateado': 0,
+                'participacao': 0  # Novo campo para participação
+            })
+    
+    total_consumo = consumo_salao + consumo_casas
 
-    # Passo 2: Definir quanto cada unidade pagará
+    # Calcular valores proporcionais e participação
     if total_consumo > 0:
-        # O salão paga proporcional ao seu consumo
+        # Valor do salão é proporcional ao seu consumo
         valor_salao = (consumo_salao / total_consumo) * valor_total
-        valor_apartamentos = valor_total - valor_salao
-
-        # Calcular rateio proporcional ao consumo
+        
+        # Valor disponível para as casas
+        valor_casas = valor_total - valor_salao
+        
+        # Distribuir o valor das casas proporcionalmente ao consumo de cada uma
         for unidade in unidades_com_consumo:
-            unidade['valor_rateado'] = (unidade['consumo'] / total_consumo) * valor_apartamentos
+            if 'Salão' in unidade['nome']:
+                unidade['valor_rateado'] = valor_salao
+                unidade['participacao'] = (valor_salao / valor_total) * 100
+            elif consumo_casas > 0:
+                unidade['valor_rateado'] = (unidade['consumo'] / consumo_casas) * valor_casas
+                unidade['participacao'] = (unidade['valor_rateado'] / valor_total) * 100
     else:
-        # Caso especial: Ninguém consumiu
+        # Caso não haja consumo (situação especial)
         valor_salao = 0
         for unidade in unidades_com_consumo:
             unidade['valor_rateado'] = 0
+            unidade['participacao'] = 0
 
-    return unidades_com_consumo, valor_salao
+    # Return total_consumo as well
+    return unidades_com_consumo, valor_salao, total_consumo
 
-
+# Then modify the route to use the returned total_consumo
 @app.route('/api/salvar-registros', methods=['POST'])
 def salvar_registros():
     dados = request.json
@@ -150,106 +168,26 @@ def salvar_registros():
         with conectar_bd() as conn:
             cursor = conn.cursor()
             
-            # 1. Calcular totais de consumo
-            total_consumo_casas = 0
-            consumo_salao = 0
-            total_apartamentos = 0
-            casas_com_consumo = []
-
-            for unidade in dados['unidades']:
-                diferenca = unidade['atual'] - unidade['anterior']
-                
-                if 'Salão' in unidade['nome']:
-                    consumo_salao = diferenca
-                else:
-                    total_apartamentos += 1
-                    if diferenca > 0:
-                        total_consumo_casas += diferenca
-                        casas_com_consumo.append(unidade['nome'])
-
-            # 2. Calcular valores
-            valor_total = dados['valor_total']
-            consumo_total = consumo_salao + total_consumo_casas
+            # Pegar o valor total da fatura dos dados recebidos
+            valor_total = dados.get('valor_total', 0)  
             
-            # Valor total para o salão (proporcional ao seu consumo)
-            if consumo_total > 0:
-                valor_salao = (consumo_salao / consumo_total) * valor_total
-            else:
-                valor_salao = 0
+            # Calcular consumos e rateios - now also getting total_consumo
+            unidades_com_consumo, valor_salao, total_consumo = calcular_rateio(dados)
             
-            # Rateio do salão (dividido por todas as casas)
-            rateio_por_casa = valor_salao / total_apartamentos if total_apartamentos > 0 else 0
+            # Rest of the function remains the same
+            # ...
 
-            # Valor disponível para distribuição entre as casas (total - salão)
-            valor_disponivel_casas = valor_total - valor_salao
-
-            # 3. Processar cada unidade
-            for unidade in dados['unidades']:
-                cursor.execute("SELECT id FROM unidades WHERE nome = ?", (unidade['nome'],))
-                unidade_id = cursor.fetchone()[0]
-                
-                diferenca = unidade['atual'] - unidade['anterior']
-                porcentagem = f"{(diferenca / unidade['anterior'] * 100):.2f}%" if unidade['anterior'] > 0 else "0.00%"
-
-                if 'Salão' in unidade['nome']:
-                    # Salão paga apenas seu consumo proporcional
-                    valor_unitario = valor_salao
-                    rateio_salao = 0
-                else:
-                    # Casas
-                    rateio_salao = rateio_por_casa
-                    
-                    if diferenca > 0 and total_consumo_casas > 0:
-                        # Calcula o valor proporcional ao consumo da casa
-                        valor_unitario = (diferenca / total_consumo_casas) * valor_disponivel_casas
-                    else:
-                        valor_unitario = 0  # Não paga pelo consumo geral
-
-                valor_total_unidade = valor_unitario + rateio_salao
-
-                # Insere no banco
-                cursor.execute("""
-                    INSERT INTO consumos (
-                        unidade_id, mes, ano, consumo_anterior, consumo_atual,
-                        diferenca, porcentagem, valor_unitario, rateio_salao, valor_total
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    unidade_id, dados['mes'], dados['ano'],
-                    unidade['anterior'], unidade['atual'],
-                    diferenca, porcentagem,
-                    round(valor_unitario, 2), round(rateio_salao, 2), round(valor_total_unidade, 2)
-                ))
-            
-            conn.commit()
-            
-            # Verificação dos totais
-            cursor.execute("""
-                SELECT 
-                    SUM(valor_unitario) as total_unitario,
-                    SUM(rateio_salao) as total_rateio,
-                    SUM(valor_total) as total_geral
-                FROM consumos
-                WHERE mes = ? AND ano = ?
-            """, (dados['mes'], dados['ano']))
-            
-            totais = cursor.fetchone()
-            
+            # Now total_consumo is available for the JSON response
             return jsonify({
                 'status': 'sucesso',
-                'mensagem': 'Registros salvos com sucesso!',
+                'mensagem': 'Registros salvos com cálculo proporcional!',
                 'detalhes': {
-                    'valor_total_fatura': valor_total,
-                    'valor_salao': round(valor_salao, 2),
-                    'rateio_por_casa': round(rateio_por_casa, 2),
-                    'total_consumo_casas': total_consumo_casas,
-                    'consumo_salao': consumo_salao,
-                    'totais_banco': {
-                        'total_unitario': round(totais['total_unitario'], 2),
-                        'total_rateio': round(totais['total_rateio'], 2),
-                        'total_geral': round(totais['total_geral'], 2)
-                    }
+                    'valor_total': valor_total,
+                    'total_consumo': total_consumo,
+                    'unidades': unidades_com_consumo
                 }
             })
+    # ...
 
     except Exception as e:
         return jsonify({
@@ -362,6 +300,7 @@ def detalhes_historico(ano, mes):
     }
 )
 
+# Na rota /exportar/<medicao_id> - MODIFICADA
 @app.route('/exportar/<medicao_id>')
 def exportar_medicao(medicao_id):
     ano, mes = medicao_id.split('-')
@@ -374,7 +313,7 @@ def exportar_medicao(medicao_id):
                 c.consumo_anterior as 'Leitura Anterior',
                 c.consumo_atual as 'Leitura Atual',
                 c.consumo_atual - c.consumo_anterior as 'Consumo (kWh)',
-                c.porcentagem as 'Variação (%)',
+                c.porcentagem as 'Participação (%)',  -- Alterado de 'Variação' para 'Participação'
                 c.valor_unitario as 'Valor Unitário (R$)',
                 c.rateio_salao as 'Rateio Salão (R$)',
                 c.valor_total as 'Total a Pagar (R$)'

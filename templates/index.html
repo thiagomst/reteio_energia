@@ -253,25 +253,25 @@
                 casaDiv.dataset.id = casaId;
 
                 casaDiv.innerHTML = `
-                <h4><i class="fas fa-home"></i> Casa ${numeroFormatado}</h4>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="anterior_casa_${casaId}">
-                            <i class="fas fa-backward"></i> Leitura Anterior:
-                        </label>
-                        <input type="number" name="anterior_casa[]" id="anterior_casa_${casaId}" readonly>
-                    </div>
-                    <div class="form-group">
-                        <label for="atual_casa_${casaId}">
-                            <i class="fas fa-forward"></i> Leitura Atual:
-                        </label>
-                        <input type="number" name="atual_casa[]" id="atual_casa_${casaId}" min="0" required>
-                    </div>
-                    <button type="button" class="btn-remove" onclick="removerCasa(${casaId})">
-                        <i class="fas fa-trash"></i>
-                    </button>
+            <h4><i class="fas fa-home"></i> Casa ${numeroFormatado}</h4>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="anterior_casa_${casaId}">
+                        <i class="fas fa-backward"></i> Leitura Anterior:
+                    </label>
+                    <input type="number" name="anterior_casa[]" id="anterior_casa_${casaId}" readonly>
                 </div>
-            `;
+                <div class="form-group">
+                    <label for="atual_casa_${casaId}">
+                        <i class="fas fa-forward"></i> Leitura Atual:
+                    </label>
+                    <input type="number" name="atual_casa[]" id="atual_casa_${casaId}" min="0" required>
+                </div>
+                <button type="button" class="btn-remove" onclick="removerCasa(${casaId})">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
 
                 container.appendChild(casaDiv);
                 casas.push(casaId);
@@ -290,7 +290,7 @@
                 }
             };
 
-            // Função principal de cálculo
+            // Função principal de cálculo - VERSÃO ATUALIZADA
             function calcularConsumos() {
                 // Validar valor total
                 const valorTotal = parseFloat(document.getElementById('valor_total').value);
@@ -299,7 +299,10 @@
                     return;
                 }
 
-                // Validar leitura do salão
+                // Coletar dados de todas as unidades
+                const unidades = [];
+
+                // Adicionar salão
                 const anteriorSalao = parseFloat(document.getElementById('anterior_salao').value) || 0;
                 const atualSalao = parseFloat(document.getElementById('atual_salao').value) || 0;
 
@@ -308,7 +311,15 @@
                     return;
                 }
 
-                // Validar leituras das casas
+                const consumoSalao = Math.max(0, atualSalao - anteriorSalao);
+                unidades.push({
+                    nome: 'Salão de festas',
+                    anterior: anteriorSalao,
+                    atual: atualSalao,
+                    consumo: consumoSalao
+                });
+
+                // Adicionar casas
                 let todasValidas = true;
                 casas.forEach(casaId => {
                     const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
@@ -318,101 +329,92 @@
                         const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
                         alert(`A leitura atual da Casa ${numeroFormatado} não pode ser menor que a anterior!`);
                         todasValidas = false;
+                        return;
                     }
+
+                    unidades.push({
+                        nome: `Casa ${casaId < 10 ? '0' + casaId : casaId}`,
+                        anterior: anteriorCasa,
+                        atual: atualCasa,
+                        consumo: Math.max(0, atualCasa - anteriorCasa)
+                    });
                 });
 
                 if (!todasValidas) return;
 
-                // Processar cálculo
-                const mesReferencia = document.getElementById('mes_referencia').value;
-                const [ano, mes] = mesReferencia.split('-');
+                // Calcular consumo total GERAL (salão + casas)
+                const consumoTotalGeral = unidades.reduce((total, unidade) => total + unidade.consumo, 0);
 
-                // Verificar se já existe registro para este mês
-                fetch(`/api/verificar-mes/${ano}/${mes}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.existe) {
-                            if (!confirm('Já existem registros para este mês. Deseja continuar?')) {
-                                return;
-                            }
-                        }
+                // Calcular valor do Salão (proporcional ao seu consumo)
+                const valorSalao = consumoTotalGeral > 0 ?
+                    (consumoSalao / consumoTotalGeral) * valorTotal : 0;
 
-                        // Calcular totais de consumo
-                        let totalConsumoSalao = atualSalao - anteriorSalao;
-                        let totalConsumoCasas = 0;
+                // Rateio do salão entre as casas
+                const rateioPorCasa = valorSalao / casas.length;
 
-                        casas.forEach(casaId => {
-                            const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
-                            const atualCasa = parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0;
-                            totalConsumoCasas += (atualCasa - anteriorCasa);
-                        });
+                // Valor disponível para distribuição proporcional entre casas
+                const valorParaCasas = valorTotal - valorSalao;
 
-                        const totalConsumoGeral = totalConsumoSalao + totalConsumoCasas;
+                // Calcular consumo total APENAS DAS CASAS (para cálculo proporcional)
+                const consumoTotalCasas = unidades
+                    .filter(u => !u.nome.includes('Salão'))
+                    .reduce((total, unidade) => total + unidade.consumo, 0);
 
-                        // Calcular percentuais
-                        const percentualSalao = totalConsumoGeral > 0 ? (totalConsumoSalao / totalConsumoGeral) * 100 : 0;
-                        const percentualCasas = 100 - percentualSalao;
+                // Calcular valores
+                const resultados = unidades.map(unidade => {
+                    if (unidade.nome.includes('Salão')) {
+                        return {
+                            unidade: unidade.nome,
+                            anterior: unidade.anterior,
+                            atual: unidade.atual,
+                            diferenca: unidade.consumo,
+                            participacao: ((valorSalao / valorTotal) * 100).toFixed(2).replace('.', ',') + '%',
+                            valor_unitario: '-',
+                            rateio_salao: '-',
+                            total_pagar: valorSalao.toFixed(2).replace('.', ',')
+                        };
+                    } else {
+                        // Valor proporcional ao consumo da casa
+                        const valorProporcional = consumoTotalCasas > 0 ?
+                            (unidade.consumo / consumoTotalCasas) * valorParaCasas : 0;
 
-                        // Calcular valores
-                        const valorSalao = (valorTotal * percentualSalao / 100);
-                        const valorPorCasa = (valorTotal * percentualCasas / 100) / casas.length;
-                        const valorRateioSalaoPorCasa = valorSalao / casas.length;
+                        // Total a pagar = valor proporcional + rateio do salão
+                        const totalPagar = valorProporcional + rateioPorCasa;
 
-                        // Preparar resultados
-                        const resultados = [];
-                        let totalGeral = 0;
+                        return {
+                            unidade: unidade.nome,
+                            anterior: unidade.anterior,
+                            atual: unidade.atual,
+                            diferenca: unidade.consumo,
+                            participacao: ((totalPagar / valorTotal) * 100).toFixed(2).replace('.', ',') + '%',
+                            valor_unitario: valorProporcional.toFixed(2).replace('.', ','),
+                            rateio_salao: rateioPorCasa.toFixed(2).replace('.', ','),
+                            total_pagar: totalPagar.toFixed(2).replace('.', ',')
+                        };
+                    }
+                });
 
-                        // Adicionar casas aos resultados
-                        casas.forEach(casaId => {
-                            const anteriorCasa = parseFloat(document.getElementById(`anterior_casa_${casaId}`).value) || 0;
-                            const atualCasa = parseFloat(document.getElementById(`atual_casa_${casaId}`).value) || 0;
-                            const diferencaCasa = atualCasa - anteriorCasa;
-                            const porcentagemCasa = anteriorCasa > 0 ?
-                                ((diferencaCasa / anteriorCasa) * 100).toFixed(2).replace('.', ',') + '%' : '0,00%';
+                // Verificação do total
+                const totalCalculado = resultados.reduce((sum, item) => {
+                    return sum + parseFloat(item.total_pagar.replace(',', '.'));
+                }, 0);
 
-                            const numeroFormatado = casaId < 10 ? `0${casaId}` : casaId;
-                            const totalPagar = valorPorCasa + valorRateioSalaoPorCasa;
+                // Ajuste para garantir que a soma seja exatamente o valorTotal
+                if (Math.abs(totalCalculado - valorTotal) > 0.01) {
+                    console.warn('Diferença no cálculo:', totalCalculado - valorTotal);
+                    // Ajuste no último item para compensar diferenças de arredondamento
+                    const diferenca = valorTotal - totalCalculado;
+                    if (resultados.length > 0) {
+                        const ultimoItem = resultados[resultados.length - 1];
+                        ultimoItem.total_pagar = (parseFloat(ultimoItem.total_pagar.replace(',', '.')) + diferenca).toFixed(2).replace('.', ',');
+                    }
+                }
 
-                            resultados.push({
-                                unidade: `Casa ${numeroFormatado}`,
-                                anterior: anteriorCasa,
-                                atual: atualCasa,
-                                diferenca: diferencaCasa,
-                                porcentagem: porcentagemCasa,
-                                valor_unitario: valorPorCasa.toFixed(2),
-                                rateio_salao: valorRateioSalaoPorCasa.toFixed(2),
-                                total_pagar: totalPagar.toFixed(2)
-                            });
-
-                            totalGeral += totalPagar;
-                        });
-
-                        // Adicionar salão aos resultados
-                        const porcentagemSalao = anteriorSalao > 0 ?
-                            ((totalConsumoSalao / anteriorSalao) * 100).toFixed(2).replace('.', ',') + '%' : '0,00%';
-
-                        resultados.push({
-                            unidade: 'Salão de festas',
-                            anterior: anteriorSalao,
-                            atual: atualSalao,
-                            diferenca: totalConsumoSalao,
-                            porcentagem: porcentagemSalao,
-                            valor_unitario: valorSalao.toFixed(2),
-                            rateio_salao: '0.00',
-                            total_pagar: valorSalao.toFixed(2)
-                        });
-
-                        totalGeral += valorSalao;
-
-                        // Exibir resultados
-                        exibirResultados(resultados, totalGeral.toFixed(2));
-                    })
-                    .catch(error => {
-                        console.error("Erro ao verificar mês:", error);
-                    });
+                // Exibir resultados
+                exibirResultados(resultados, valorTotal.toFixed(2));
             }
 
-            // Função para exibir os resultados em uma tabela
+            // Função para exibir os resultados em uma tabela - VERSÃO ATUALIZADA
             function exibirResultados(resultados, totalGeral) {
                 const tabelaHTML = `
                 <table class="resultado-table">
@@ -422,7 +424,7 @@
                             <th>Mês Anterior</th>
                             <th>Mês Atual</th>
                             <th>Diferença (kWh)</th>
-                            <th>Variação</th>
+                            <th>Participação</th>
                             <th>Valor Unitário (R$)</th>
                             <th>Rateio Salão (R$)</th>
                             <th>Total a Pagar (R$)</th>
@@ -435,10 +437,10 @@
                                 <td>${item.anterior}</td>
                                 <td>${item.atual}</td>
                                 <td>${item.diferenca}</td>
-                                <td>${item.porcentagem}</td>
-                                <td>${item.unidade.includes('Salão') ? '-' : parseFloat(item.valor_unitario).toFixed(2).replace('.', ',')}</td>
-                                <td>${item.unidade.includes('Salão') ? '-' : parseFloat(item.rateio_salao).toFixed(2).replace('.', ',')}</td>
-                                <td>${parseFloat(item.total_pagar).toFixed(2).replace('.', ',')}</td>
+                                <td>${item.participacao}</td>
+                                <td>${item.valor_unitario.includes('-') ? '-' : item.valor_unitario}</td>
+                                <td>${item.rateio_salao}</td>
+                                <td>${item.total_pagar}</td>
                             </tr>
                         `).join('')}
                         <tr class="total-row">
