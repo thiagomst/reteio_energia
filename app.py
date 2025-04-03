@@ -168,16 +168,61 @@ def salvar_registros():
         with conectar_bd() as conn:
             cursor = conn.cursor()
             
-            # Pegar o valor total da fatura dos dados recebidos
-            valor_total = dados.get('valor_total', 0)  
+            # Pegar o valor total da fatura e período dos dados recebidos
+            valor_total = dados.get('valor_total', 0)
+            mes = dados.get('mes', datetime.now().month)
+            ano = dados.get('ano', datetime.now().year)
             
-            # Calcular consumos e rateios - now also getting total_consumo
+            # Calcular consumos e rateios
             unidades_com_consumo, valor_salao, total_consumo = calcular_rateio(dados)
             
-            # Rest of the function remains the same
-            # ...
-
-            # Now total_consumo is available for the JSON response
+            # Inserir na tabela medicoes
+            cursor.execute("""
+                INSERT INTO medicoes (mes, ano, valor_total)
+                VALUES (?, ?, ?)
+            """, (mes, ano, valor_total))
+            medicao_id = cursor.lastrowid
+            
+            # Inserir os consumos de cada unidade
+            for unidade in unidades_com_consumo:
+                # Obter ID da unidade
+                cursor.execute("SELECT id FROM unidades WHERE nome = ?", (unidade['nome'],))
+                unidade_id = cursor.fetchone()[0]
+                
+                # Obter leitura anterior
+                cursor.execute("""
+                    SELECT consumo_atual 
+                    FROM consumos 
+                    WHERE unidade_id = ? 
+                    ORDER BY ano DESC, mes DESC 
+                    LIMIT 1
+                """, (unidade_id,))
+                anterior = cursor.fetchone()
+                consumo_anterior = anterior['consumo_atual'] if anterior else 0
+                
+                # Calcular valores para inserção
+                consumo_atual = unidade['atual'] if 'atual' in unidade else consumo_anterior
+                diferenca = consumo_atual - consumo_anterior
+                
+                # Inserir na tabela consumos
+                cursor.execute("""
+                    INSERT INTO consumos (
+                        unidade_id, mes, ano, consumo_anterior, consumo_atual,
+                        diferenca, porcentagem, valor_unitario, rateio_salao,
+                        valor_total, medicoes_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    unidade_id, mes, ano,
+                    consumo_anterior, consumo_atual,
+                    diferenca, f"{unidade['participacao']:.2f}%",
+                    unidade['valor_rateado'] / diferenca if diferenca > 0 else 0,
+                    valor_salao if 'Salão' in unidade['nome'] else 0,
+                    unidade['valor_rateado'],
+                    medicao_id
+                ))
+            
+            conn.commit()
+            
             return jsonify({
                 'status': 'sucesso',
                 'mensagem': 'Registros salvos com cálculo proporcional!',
@@ -187,8 +232,7 @@ def salvar_registros():
                     'unidades': unidades_com_consumo
                 }
             })
-    # ...
-
+            
     except Exception as e:
         return jsonify({
             'status': 'erro',
